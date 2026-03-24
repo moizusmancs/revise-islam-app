@@ -46,12 +46,7 @@ class _QiblahScreenState extends State<QiblahScreen>
 
   StreamSubscription<CompassEvent>? _compassSub;
 
-  static const double _orbitRadius = 66.0;
   static const double _boundaryRadius = 132.0;
-
-  // Relative angle: where the arrow sits on its orbit
-  double get _arrowAngle =>
-      (_qiblaDirection - _compassHeading) * math.pi / 180;
 
   @override
   void initState() {
@@ -209,23 +204,40 @@ class _QiblahScreenState extends State<QiblahScreen>
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Swiggly rings + boundary + cardinals
+                  // Swiggly rings + boundary + cardinals (rotates with heading)
                   CustomPaint(
                     size: const Size(300, 300),
-                    painter: _CompassPainter(_waveController.value),
+                    painter: _CompassPainter(
+                      _waveController.value,
+                      _compassHeading,
+                    ),
                   ),
 
                   // Qiblah indicator — fixed at top of boundary ring (12 o'clock)
-                  // Arrow rotates toward it when phone faces Qiblah
+                  // Arrow reaches here when phone faces Qiblah
                   Transform.translate(
                     offset: const Offset(0, -_boundaryRadius),
                     child: _QiblahIndicator(isAligned: _isAligned),
                   ),
 
-                  // Degree + direction label — fixed center
+                  // Arrow (fixed) + degree + direction — centered column
                   Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      ScaleTransition(
+                        scale: _arrowScale,
+                        child: SizedBox(
+                          width: 22,
+                          height: 20,
+                          child: CustomPaint(
+                            painter: _ArrowPainter(
+                              isAligned: _isAligned,
+                              glowProgress: _alignController.value,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       Text(
                         '${_qiblaDirection.toStringAsFixed(0)}°',
                         style: const TextStyle(
@@ -247,30 +259,6 @@ class _QiblahScreenState extends State<QiblahScreen>
                         ),
                       ),
                     ],
-                  ),
-
-                  // Arrow — orbits center, tip points toward Qiblah
-                  Transform.translate(
-                    offset: Offset(
-                      _orbitRadius * math.sin(_arrowAngle),
-                      -_orbitRadius * math.cos(_arrowAngle),
-                    ),
-                    child: Transform.rotate(
-                      angle: _arrowAngle,
-                      child: ScaleTransition(
-                        scale: _arrowScale,
-                        child: SizedBox(
-                          width: 22,
-                          height: 20,
-                          child: CustomPaint(
-                            painter: _ArrowPainter(
-                              isAligned: _isAligned,
-                              glowProgress: _alignController.value,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
                   ),
                 ],
               ),
@@ -324,8 +312,10 @@ class _QiblahIndicator extends StatelessWidget {
               ]
             : [],
       ),
-      // Placeholder — replace with Kaaba icon asset later
-      child: const Icon(Icons.place_rounded, color: Colors.white, size: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Image.asset('lib/assets/icons/qaabah-icon.png'),
+      ),
     );
   }
 }
@@ -426,7 +416,8 @@ class _ArrowPainter extends CustomPainter {
 
 class _CompassPainter extends CustomPainter {
   final double t;
-  const _CompassPainter(this.t);
+  final double compassHeading;
+  const _CompassPainter(this.t, this.compassHeading);
 
   Path _wavyCircle({
     required Offset center,
@@ -453,6 +444,11 @@ class _CompassPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
+
+    // Rotate entire compass so N/E/S/W always reflect real-world directions
+    canvas.translate(center.dx, center.dy);
+    canvas.rotate(-compassHeading * math.pi / 180);
+    canvas.translate(-center.dx, -center.dy);
 
     final rings = [
       (radius: 52.0, amplitude: 3.0, phase: 0.0, speed: 1.0, opacity: 0.22),
@@ -517,5 +513,6 @@ class _CompassPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_CompassPainter old) => old.t != t;
+  bool shouldRepaint(_CompassPainter old) =>
+      old.t != t || old.compassHeading != compassHeading;
 }
